@@ -1,0 +1,6 @@
+{
+  "name": "AI Chatbot MVP",
+  "description": "AI-powered document chatbot with RAG, document management, conversation history, and admin dashboard",
+  "permissions": [],
+  "capabilities": []
+}

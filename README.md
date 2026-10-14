@@ -1,60 +1,26 @@
-ABCD
+# AI Chatbot MVP — React Web Application
 
-# AI Chatbot MVP — Website Only
+A modern AI-powered document chatbot with RAG (Retrieval-Augmented Generation), built as a React SPA with TypeScript, Tailwind CSS, and Vite.
 
-AI Chatbot berbasis dokumen dengan RAG, dibangun untuk dijalankan di local dan di-deploy ke VPS Ubuntu.
+## Features
 
-**Status saat ini:** Fase 0-4 selesai (fondasi + auth + ingestion pipeline + RAG + embedding).
+- **Document Chat with RAG**: Ask questions based on uploaded documents with cited sources, page numbers, and markdown-rendered answers.
+- **Document Management**: Upload PDF, PNG, JPG, and text documents with progress tracking, processing status pipeline (`queued` -> `processing` -> `completed`), reprocess capabilities, and soft deletion.
+- **Conversation History**: Search, view, resume, and delete past conversations with Indonesian relative timestamps.
+- **Admin Dashboard**: System statistics overview (Total Dokumen, Total Percakapan, Dokumen Selesai, Total Pesan) and recent document monitor.
+- **Authentication**: Role-based access control (Admin & User) with secure session persistence.
+- **Responsive UI**: Indonesian language interface with clean Tailwind CSS styling, responsive sidebar, toast notifications, and accessible confirmation dialogs.
 
-## Cara Cepat
+## Quick Start
 
-```powershell
-cd c:\ai-engineer\ai-chatbot-mvp
-docker compose up -d postgres
-docker compose run --rm api alembic upgrade head
-docker compose up -d
+```bash
+npm install
+npm run dev
 ```
 
-Buka http://localhost:3000 — login dengan `admin@example.com` / `Admin123!`
+The app will be available on `http://localhost:3000`.
 
-Lihat [QUICKSTART.md](./QUICKSTART.md) untuk panduan lengkap.
+### Default Credentials
 
-## Stack
-
-- **Frontend:** Next.js 15 + TypeScript + Tailwind CSS
-- **Backend:** FastAPI + Python 3.12 + SQLAlchemy async
-- **Database:** PostgreSQL 17 + PGVector
-- **Embedding:** sentence-transformers `all-MiniLM-L6-v2` (384 dim, CPU)
-- **RAG:** Custom retrieval pipeline dengan cosine similarity
-- **LLM:** Mock (lokal) / OpenAI API (set `LLM_PROVIDER=openai` di `.env`)
-- **Container:** Docker + Docker Compose
-
-## Cara Aktifkan OpenAI
-
-Edit `.env`:
-```
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-```
-
-Lalu restart API:
-```powershell
-docker compose restart api
-```
-
-## Fase Implementasi
-
-- [x] Fase 0 — Keputusan & setup
-- [x] Fase 1 — Fondasi (Next.js + FastAPI + PostgreSQL)
-- [x] Fase 2 — Login, RBAC, upload dokumen
-- [x] Fase 3 — Document ingestion (PDF extraction + chunking)
-- [x] Fase 4 — Embedding + PGVector retrieval + RAG + LLM
-- [ ] Fase 5 — Agentic RAG + n8n workflows
-- [ ] Fase 6 — UI polish + E2E tests
-- [ ] Fase 7 — Security hardening
-- [ ] Fase 8 — CI/CD (GitHub Actions)
-- [ ] Fase 9 — VPS Ubuntu production
-- [ ] Fase 10 — Monitoring + backup
-
-Dokumentasi lengkap lihat `README AI Chatbot MVP.md`
+- **Admin Account**: `admin@example.com` / `Admin123!`
+- **User Account**: `user@example.com` / `User123!`
