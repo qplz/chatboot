@@ -1,0 +1,48 @@
+name: Gemini API call
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  call-gemini:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Call Gemini API
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -e
+
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "Missing secret: GEMINI_API_KEY"
+            exit 1
+          fi
+
+          curl -sS -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "contents": [{
+                "parts": [{
+                  "text": "Hai, kirimkan balasan singkat dalam bahasa Indonesia yang menyatakan bahwa workflow GitHub Actions berhasil memanggil Gemini API."
+                }]
+              }]
+            }' | python - <<'PY'
+import json, sys
+
+data = json.load(sys.stdin)
+print(json.dumps(data, ensure_ascii=False, indent=2))
+
+if "error" in data:
+    raise SystemExit(1)
+PY
