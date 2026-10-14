@@ -1,0 +1,51 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+
+# Docker
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data / uploads (never commit user data)
+uploads/
+data/
+backups/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Secrets / keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Local API uploads (Windows dev mode)
+services/api/data/
