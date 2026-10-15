@@ -47,7 +47,7 @@ services:
   # ----------------------------------------------------------------------------
   postgres:
     container_name: ai-chatbot-postgres
-    image: pgvector/pgvector:pg17
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     restart: unless-stopped
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -76,16 +76,16 @@ services:
           memory: 512M
 
   # ----------------------------------------------------------------------------
-  # 3. Object Storage: MinIO (S3 Compatible Storage for Documents)
+  # 3. Object Storage: MinIO (Public Quay.io Mirror - Free Public Pull)
   # ----------------------------------------------------------------------------
   minio:
     container_name: ai-chatbot-minio
-    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - "${S3_PORT:-9000}:9000"       # S3 API
-      - "${S3_CONSOLE_PORT:-9001}:9001" # Web Dashboard
+      - "${S3_PORT:-9000}:9000"         # S3 API Endpoint
+      - "${S3_CONSOLE_PORT:-9001}:9001" # Web Console GUI
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
@@ -94,18 +94,26 @@ services:
     networks:
       - ai-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 20s
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.20"
+          memory: 256M
 
   # ----------------------------------------------------------------------------
-  # 4. Workflow Engine: n8n (Automation & Document Pipelines)
+  # 4. Workflow Engine: n8n (Official Docker Hub Image)
   # ----------------------------------------------------------------------------
   n8n:
     container_name: ai-chatbot-n8n
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
       - "${N8N_PORT:-5678}:5678"
@@ -120,6 +128,14 @@ services:
       - n8n_data:/home/node/.n8n
     networks:
       - ai-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1536M
+        reservations:
+          cpus: "0.25"
+          memory: 512M
 
 # ------------------------------------------------------------------------------
 # Persistent Storage Volumes

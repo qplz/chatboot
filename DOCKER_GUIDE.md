@@ -30,32 +30,40 @@ docker compose version
 
 File `docker-compose.yml` mengorkestrasi 4 layanan utama dalam satu jaringan bridge privat (`ai_chatbot_network`):
 
-| Service | Container Name | Port Host | Fungsi |
-|---|---|---|---|
-| **web** | `ai-chatbot-web` | `3000` | Frontend React SPA + Nginx (Gzip, caching, healthcheck) |
-| **postgres** | `ai-chatbot-postgres` | `5432` | PostgreSQL 17 + Ekstensi **PGVector** (vektor RAG) |
-| **minio** | `ai-chatbot-minio` | `9000`, `9001` | S3-compatible Object Storage (API: 9000, Dashboard UI: 9001) |
-| **n8n** | `ai-chatbot-n8n` | `5678` | Workflow Automation engine (Indonesia Timezone) |
+| Service | Container Name | Image Resmi | Port Host | Fungsi |
+|---|---|---|---|---|
+| **web** | `ai-chatbot-web` | *Local Build (Dockerfile)* | `3000` | Frontend React SPA + Nginx (Gzip, caching, healthcheck) |
+| **postgres** | `ai-chatbot-postgres` | `pgvector/pgvector:pg17` | `5432` | PostgreSQL 17 + Ekstensi **PGVector** (vektor RAG) |
+| **minio** | `ai-chatbot-minio` | `quay.io/minio/minio:latest` | `9000`, `9001` | S3-compatible Object Storage (Public mirror resmi, bebas rate limit) |
+| **n8n** | `ai-chatbot-n8n` | `n8nio/n8n:latest` | `5678` | Workflow Automation engine (Official Docker Hub image) |
 
 ---
 
-## 3. Langkah Menjalankan Project
+## 3. Langkah Menjalankan Project (Fresh & Solved)
 
-### Langkah 1: Siapkan File Environment (.env)
-Salin template konfigurasi:
+### Langkah 1: Pastikan Tidak Ada File Ganda (compose.yaml)
+Jika di server Anda sebelumnya terdapat file `compose.yaml`, hapus agar Docker Compose hanya membaca `docker-compose.yml`:
+```bash
+rm -f /opt/agentic-rag/compose.yaml
+```
+
+### Langkah 2: Siapkan File Environment (.env)
+Salin template konfigurasi jika belum ada:
 ```bash
 cp .env.example .env
 ```
-*(Opsional: Sesuaikan password atau kunci enkripsi di dalam `.env` jika diperlukan)*
 
-### Langkah 2: Build & Jalankan Kontainer
+### Langkah 3: Tarik Image & Jalankan Kontainer
 Gunakan perintah Compose V2:
 ```bash
-# Jalankan seluruh stack di background (detached mode)
+# Tarik image terlebih dahulu untuk memastikan semua image berhasil diunduh
+docker compose pull
+
+# Jalankan seluruh stack di background (detached mode) bersama build frontend
 docker compose up -d --build
 ```
 
-### Langkah 3: Periksa Status Kontainer & Healthcheck
+### Langkah 4: Periksa Status Kontainer & Healthcheck
 ```bash
 docker compose ps
 ```
@@ -81,7 +89,27 @@ Setelah kontainer aktif, buka peramban (browser):
 
 ---
 
-## 5. Perintah Manajemen Operasional (Docker 29.9.1)
+## 5. Solusi Permasalahan (Troubleshooting yang Telah Diperbaiki)
+
+1. **Peringatan File Ganda (`Found multiple config files`)**:
+   - **Penyebab**: Terdapat `compose.yaml` dan `docker-compose.yml` sekaligus di direktori yang sama.
+   - **Solusi**: File `compose.yaml` telah dihapus dari repositori. Jika di server masih ada, jalankan `rm -f compose.yaml`.
+
+2. **Error `pull access denied for minio/minio`**:
+   - **Penyebab**: Docker Hub membatasi image `minio/minio` atau tag tanggal lama dihapus/membutuhkan login berbayar.
+   - **Solusi**: Diganti menggunakan registry publik resmi MinIO: `quay.io/minio/minio:latest` yang 100% gratis, bebas login, dan didukung penuh.
+
+3. **Error `No such image: docker.n8n.io/n8nio/n8n:latest`**:
+   - **Penyebab**: Registry custom `docker.n8n.io` sering mengalami timeout atau tidak dikenali oleh daemon Docker standar.
+   - **Solusi**: Diganti dengan image resmi Docker Hub: `n8nio/n8n:latest`.
+
+4. **Status `Interrupted` pada `pgvector/pgvector:pg17`**:
+   - **Penyebab**: Terjadi akibat kegagalan pull pada MinIO sehingga Docker membatalkan proses download image lainnya secara bersamaan.
+   - **Solusi**: Setelah MinIO dan n8n diperbaiki, jalankan `docker compose pull` untuk mengunduh semua image secara bersih.
+
+---
+
+## 6. Perintah Manajemen Operasional (Docker 29.9.1)
 
 ```bash
 # Melihat log secara real-time untuk semua layanan
@@ -108,7 +136,7 @@ docker compose down -v
 
 ---
 
-## 6. Konfigurasi Firewall Ubuntu 22.04 LTS (UFW)
+## 7. Konfigurasi Firewall Ubuntu 22.04 LTS (UFW)
 
 Jika Anda mendeploy di VPS Ubuntu 22.04 dengan firewall UFW aktif:
 
@@ -124,22 +152,3 @@ sudo ufw allow 5678/tcp comment 'n8n Workflow'
 sudo ufw reload
 sudo ufw status
 ```
-
----
-
-## 7. Troubleshooting di Ubuntu 22.04
-
-1. **Permission Denied saat menjalankan docker**:
-   Pastikan user Anda masuk ke group `docker`:
-   ```bash
-   sudo usermod -aG docker $USER
-   newgrp docker
-   ```
-
-2. **Port Konflik (misal 3000 atau 5432 sudah dipakai)**:
-   Ubah variabel `WEB_PORT` atau `POSTGRES_PORT` di file `.env` tanpa perlu mengubah `docker-compose.yml`. Contoh:
-   ```env
-   WEB_PORT=8080
-   POSTGRES_PORT=5433
-   ```
-   Lalu jalankan `docker compose up -d`.
