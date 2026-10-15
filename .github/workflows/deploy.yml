@@ -1,0 +1,22 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ https://kris.sinau-jogja.my.id/ }}
+          username: ${{ andmin }}
+          key: ${{ -----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACCowIBi9xmZs721WHh/b5ogiOpZ41eQrcmYQnac++7J9gAAAJhy0ZyoctGc
+qAAAAAtzc2gtZWQyNTUxOQAAACCowIBi9xmZs721WHh/b5ogiOpZ41eQrcmYQnac++7J9g
+AAAEBPCqrtO1Hn5XQu6boSoBnlIeD9iSWTztQN8HccSmporqjAgGL3GZmzvbVYeH9vmiCI
+6lnjV5CtyZhCdpz77sn2AAAAFWdpdGh1Yi1hY3Rpb25zLWRlcGxveQ==
+-----END OPENSSH PRIVATE KEY-----
+ }}
+          script: /opt/agentic-rag/deploy.sh
