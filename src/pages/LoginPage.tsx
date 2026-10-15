@@ -134,10 +134,36 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-xs text-gray-400">
-            Default: <span className="font-mono">admin@example.com</span> /{" "}
-            <span className="font-mono">Admin123!</span>
-          </p>
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <p className="text-center text-xs text-gray-500 mb-3 font-medium">
+              Akses Cepat Pengujian (RBAC):
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail("admin@example.com");
+                  setPassword("Admin123!");
+                }}
+                className="rounded-lg border border-primary-200 bg-primary-50/50 py-1.5 px-2 text-xs font-semibold text-primary-700 hover:bg-primary-100 transition"
+              >
+                Isi Akun Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail("user@example.com");
+                  setPassword("User123!");
+                }}
+                className="rounded-lg border border-gray-200 bg-gray-50 py-1.5 px-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 transition"
+              >
+                Isi Akun User
+              </button>
+            </div>
+            <p className="mt-3 text-center text-[11px] text-gray-400">
+              Admin memiliki hak akses penuh ke menu Dashboard & Manajemen Sistem.
+            </p>
+          </div>
         </div>
       </div>
     </div>

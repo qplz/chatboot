@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquare,
+  X,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,7 +22,11 @@ const navItems = [
   { href: "/documents", label: "Dokumen", icon: FileText },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  onCloseMobile?: () => void;
+}
+
+export default function Sidebar({ onCloseMobile }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -44,27 +49,44 @@ export default function Sidebar() {
     navigate("/login");
   };
 
+  const handleNavClick = () => {
+    if (onCloseMobile) onCloseMobile();
+  };
+
   return (
     <>
-      <aside className="flex h-full w-60 flex-col border-r border-gray-200 bg-white select-none">
-        {/* Logo */}
-        <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 shadow-sm">
-            <Bot className="text-white" size={18} aria-hidden="true" />
+      <aside className="flex h-full w-64 flex-col border-r border-gray-200 bg-white select-none">
+        {/* Logo Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-600 shadow-sm">
+              <Bot className="text-white" size={18} aria-hidden="true" />
+            </div>
+            <span className="text-sm font-bold text-gray-900">AI Chatbot</span>
           </div>
-          <span className="text-sm font-bold text-gray-900">AI Chatbot</span>
+          {onCloseMobile && (
+            <button
+              type="button"
+              onClick={onCloseMobile}
+              className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 md:hidden"
+              aria-label="Tutup navigasi"
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
 
-        {/* Nav */}
+        {/* Nav Links */}
         <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4 scrollbar-thin">
           {navItems.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               to={href}
+              onClick={handleNavClick}
               className={clsx(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
                 location.pathname.startsWith(href)
-                  ? "bg-primary-50 text-primary-700"
+                  ? "bg-primary-50 text-primary-700 font-semibold"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               )}
             >
@@ -76,10 +98,11 @@ export default function Sidebar() {
           {user?.role === "admin" && (
             <Link
               to="/dashboard"
+              onClick={handleNavClick}
               className={clsx(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
                 location.pathname.startsWith("/dashboard")
-                  ? "bg-primary-50 text-primary-700"
+                  ? "bg-primary-50 text-primary-700 font-semibold"
                   : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
               )}
             >
@@ -114,6 +137,7 @@ export default function Sidebar() {
                     <li key={conv.id}>
                       <Link
                         to={`/chat?conv=${conv.id}`}
+                        onClick={handleNavClick}
                         className={clsx(
                           "flex items-center rounded-lg px-3 py-2 text-xs transition truncate",
                           location.search.includes(conv.id)

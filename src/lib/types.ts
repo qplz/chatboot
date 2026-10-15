@@ -63,6 +63,8 @@ export interface Document {
 export interface ChatRequest {
   question: string;
   conversation_id?: string;
+  target_document_id?: string;
+  mode?: "strict" | "exploratory";
 }
 
 export interface ChatResponse {

@@ -45,6 +45,18 @@ Karyawan meningkat dari 150 menjadi 250 orang.
 Ekspansi ke Malaysia dan Singapura mulai Q1 2025.
 Target pendapatan Rp 80 miliar pada akhir 2025.`;
 
+const SAMPLE_EXCEL_DATA = `DATA REKAPITULASI PENJUALAN & ANGGARAN PERUSAHAAN (EXCEL)
+Sheet: Rekap_Kinerja_2024
+Kolom: [Bulan, Divisi, Target (Rp Miliar), Realisasi (Rp Miliar), Persentase Capaian (%)]
+- Jan 2024 | Cloud Solutions | 4.0 | 4.2 | 105%
+- Feb 2024 | AI Chatbot Dev  | 3.5 | 3.8 | 108%
+- Mar 2024 | Security System | 3.0 | 3.1 | 103%
+- Q2 2024  | Total Gabungan  | 12.0 | 13.2 | 110%
+- Q3 2024  | Total Gabungan  | 14.0 | 14.5 | 103%
+- Q4 2024  | Total Gabungan  | 14.5 | 15.2 | 104%
+Total Tahunan 2024: Target Rp 48 Miliar, Realisasi Rp 50 Miliar (Tercapai 104.1%)
+Status Audit: Selesai diverifikasi tim Keuangan Internal.`;
+
 const DEFAULT_DOCUMENTS: Document[] = [
   {
     id: "24e2bebe-bd39-464d-88e1-c78cef446c30",
@@ -62,6 +74,25 @@ const DEFAULT_DOCUMENTS: Document[] = [
         document_name: "test_laporan.pdf",
         page: 1,
         text: SAMPLE_DOCUMENT_TEXT,
+      },
+    ],
+  },
+  {
+    id: "a310c891-7f8e-4a8b-b102-ef6819b139fa",
+    original_name: "rekap_kinerja_keuangan.xlsx",
+    file_size: 18450,
+    mime_type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    status: "completed",
+    checksum: "5a8e7d991bce98a12903fead23985b1a0ef",
+    created_at: "2026-10-13T08:10:00.000Z",
+    updated_at: "2026-10-13T08:11:15.000Z",
+    chunks: [
+      {
+        id: "9f01bc44-59e1-4560-a7d1-e6c1a8901234",
+        document_id: "a310c891-7f8e-4a8b-b102-ef6819b139fa",
+        document_name: "rekap_kinerja_keuangan.xlsx",
+        page: 1,
+        text: SAMPLE_EXCEL_DATA,
       },
     ],
   },
@@ -172,7 +203,6 @@ function setStored<T>(key: string, value: T): void {
   }
 }
 
-// Ensure initial state
 export function initStore() {
   if (!localStorage.getItem(STORAGE_KEYS.DOCUMENTS)) {
     setStored(STORAGE_KEYS.DOCUMENTS, DEFAULT_DOCUMENTS);
@@ -192,7 +222,6 @@ export const authApi = {
       setStored(STORAGE_KEYS.CURRENT_USER, DEFAULT_USER);
       return { access_token: "mock_jwt_token_" + Date.now(), token_type: "bearer" };
     }
-    // Also allow demo user
     if (trimmedEmail === "user@example.com" && password === "User123!") {
       const normalUser: User = {
         id: "c87a12bc-1234-4567-8901-abcdef123456",
@@ -223,12 +252,24 @@ export const authApi = {
   },
 };
 
-// RAG matching logic
-function ragAnswer(question: string, docs: Document[]): { answer: string; sources: SourceCitation[] } {
+// Agentic RAG reasoning engine
+function ragAnswer(
+  question: string,
+  docs: Document[],
+  targetDocId?: string,
+  mode: "strict" | "exploratory" = "strict"
+): { answer: string; sources: SourceCitation[] } {
   const qLower = question.toLowerCase();
 
-  // Find all active completed documents
-  const completedDocs = docs.filter((d) => d.status === "completed" && d.chunks && d.chunks.length > 0);
+  // Filter completed docs
+  let completedDocs = docs.filter(
+    (d) => d.status === "completed" && d.chunks && d.chunks.length > 0
+  );
+
+  if (targetDocId && targetDocId !== "all") {
+    completedDocs = completedDocs.filter((d) => d.id === targetDocId);
+  }
+
   if (completedDocs.length === 0) {
     return {
       answer:
@@ -238,7 +279,7 @@ function ragAnswer(question: string, docs: Document[]): { answer: string; source
   }
 
   // Keywords search across chunks
-  const matchedChunks: { chunk: DocumentChunk; score: number }[] = [];
+  const matchedChunks: { doc: Document; chunk: DocumentChunk; score: number }[] = [];
   const words = qLower.split(/[\s,?.!]+/).filter((w) => w.length > 2);
 
   for (const doc of completedDocs) {
@@ -251,12 +292,14 @@ function ragAnswer(question: string, docs: Document[]): { answer: string; source
         }
       }
       if (matchCount > 0) {
-        matchedChunks.push({ chunk, score: matchCount });
+        matchedChunks.push({ doc, chunk, score: matchCount });
       }
     }
   }
 
-  // If no specific match, check general summary queries
+  matchedChunks.sort((a, b) => b.score - a.score);
+
+  // Check query intents
   const isSummaryQuery =
     qLower.includes("ringkas") ||
     qLower.includes("fakta penting") ||
@@ -265,7 +308,18 @@ function ragAnswer(question: string, docs: Document[]): { answer: string; source
     qLower.includes("apa yang perlu") ||
     qLower.includes("jelaskan");
 
-  if (matchedChunks.length === 0 && !isSummaryQuery) {
+  const isExcelQuery =
+    qLower.includes("excel") ||
+    qLower.includes("tabel") ||
+    qLower.includes("sheet") ||
+    qLower.includes("baris") ||
+    qLower.includes("kolom") ||
+    qLower.includes("anggaran") ||
+    qLower.includes("rekap") ||
+    qLower.includes("capaian") ||
+    qLower.includes("target");
+
+  if (matchedChunks.length === 0 && !isSummaryQuery && !isExcelQuery && mode === "strict") {
     return {
       answer:
         "Maaf, saya tidak menemukan informasi yang relevan dalam dokumen yang tersedia. Pastikan dokumen sudah diunggah dan selesai diproses.",
@@ -273,8 +327,11 @@ function ragAnswer(question: string, docs: Document[]): { answer: string; source
     };
   }
 
-  const primaryDoc = completedDocs[0];
-  const primaryChunk = matchedChunks.length > 0 ? matchedChunks[0].chunk : primaryDoc.chunks![0];
+  // Select primary matched document or fallback
+  const bestMatch = matchedChunks[0];
+  const primaryDoc = bestMatch ? bestMatch.doc : completedDocs[0];
+  const primaryChunk = bestMatch ? bestMatch.chunk : primaryDoc.chunks![0];
+
   const sources: SourceCitation[] = [
     {
       document_id: primaryDoc.id,
@@ -284,54 +341,78 @@ function ragAnswer(question: string, docs: Document[]): { answer: string; source
     },
   ];
 
-  // Specific query synthesis based on standard sample data:
+  // If another document also matched well, add as secondary source
+  if (matchedChunks.length > 1 && matchedChunks[1].doc.id !== primaryDoc.id) {
+    sources.push({
+      document_id: matchedChunks[1].doc.id,
+      document_name: matchedChunks[1].doc.original_name,
+      page: matchedChunks[1].chunk.page || 1,
+      chunk_id: matchedChunks[1].chunk.id,
+    });
+  }
+
+  // Domain answers:
+  // 1. Excel / Rekap Kinerja Sheet
+  if (isExcelQuery || primaryDoc.original_name.endsWith(".xlsx") || primaryDoc.original_name.endsWith(".xls")) {
+    return {
+      answer: `Berdasarkan lembar kerja spreadsheet **rekap_kinerja_keuangan.xlsx**:\n\n- **Total Realisasi 2024**: Mencapai **Rp 50 Miliar** dari target Rp 48 Miliar (**104.1%** capaian).\n- **Kinerja Divisi**: Divisi AI Chatbot Dev mencatatkan capaian tertinggi di Q1 dengan **108%** (Realisasi Rp 3.8 Miliar dari Target Rp 3.5 Miliar).\n- **Puncak Realisasi**: Terjadi pada Q4 2024 dengan total gabungan sebesar **Rp 15.2 Miliar**.\n- **Status**: Data telah tervalidasi dan diaudit oleh tim Keuangan Internal.`,
+      sources,
+    };
+  }
+
+  // 2. Pendapatan & Finansial
   if (qLower.includes("pendapatan") || qLower.includes("omzet") || qLower.includes("uang") || qLower.includes("revenue")) {
     return {
-      answer: `Berdasarkan dokumen **${primaryDoc.original_name}**:\n\n- **Pendapatan 2024**: Mencapai **Rp 50 miliar**.\n- **Target Pendapatan 2025**: Ditargetkan mencapai **Rp 80 miliar** pada akhir tahun 2025 seiring ekspansi ke Malaysia dan Singapura.`,
+      answer: `Berdasarkan dokumen **${primaryDoc.original_name}**:\n\n- **Pendapatan 2024**: Mencapai **Rp 50 miliar**.\n- **Target Pendapatan 2025**: Ditargetkan meningkat menjadi **Rp 80 miliar** pada akhir tahun 2025 didorong oleh ekspansi pasar regional.`,
       sources,
     };
   }
 
+  // 3. Rencana Ekspansi
   if (qLower.includes("ekspansi") || qLower.includes("2025") || qLower.includes("rencana")) {
     return {
-      answer: `Berdasarkan bagian Rencana 2025 pada dokumen **${primaryDoc.original_name}**:\n\n1. **Ekspansi Regional**: Membuka operasional pasar di Malaysia dan Singapura mulai Q1 2025.\n2. **Target Finansial**: Mencapai target pendapatan sebesar **Rp 80 miliar** pada akhir 2025.`,
+      answer: `Berdasarkan bagian Rencana 2025 pada dokumen **${primaryDoc.original_name}**:\n\n1. **Ekspansi Regional**: Menembus dan memperluas pasar di Malaysia dan Singapura mulai Q1 2025.\n2. **Target Finansial**: Mencapai target pendapatan tahunan sebesar **Rp 80 miliar** di akhir 2025.`,
       sources,
     };
   }
 
+  // 4. Karyawan
   if (qLower.includes("karyawan") || qLower.includes("pegawai") || qLower.includes("orang") || qLower.includes("staf")) {
     return {
-      answer: `Berdasarkan pencapaian tahun 2024, jumlah karyawan Perusahaan ABC mengalami lonjakan signifikan dari **150 orang menjadi 250 orang**.`,
+      answer: `Berdasarkan data pencapaian 2024, jumlah karyawan Perusahaan ABC bertumbuh dari **150 menjadi 250 orang** seiring pembentukan unit bisnis dan tim riset baru.`,
       sources,
     };
   }
 
-  if (qLower.includes("produk") || qLower.includes("layanan") || qLower.includes("ungulan") || qLower.includes("unggulan")) {
+  // 5. Produk Unggulan
+  if (qLower.includes("produk") || qLower.includes("layanan") || qLower.includes("unggulan")) {
     return {
-      answer: `Produk unggulan Perusahaan ABC berdasarkan dokumen meliputi:\n\n- **Sistem Manajemen Dokumen**: Telah dipercaya dan digunakan oleh lebih dari 200 perusahaan di Indonesia.\n- **Platform AI Chatbot**: Solusi layanan pelanggan otomatis (customer service) 24 jam non-stop.\n- **Cloud Storage**: Kapasitas penyimpanan awan hingga 10 TB untuk setiap klien.`,
+      answer: `Tiga produk unggulan Perusahaan ABC dalam dokumen adalah:\n\n- **Sistem Manajemen Dokumen**: Diimplementasikan oleh lebih dari 200 perusahaan di Indonesia.\n- **Platform AI Chatbot**: Layanan pelanggan interaktif 24 jam berbasis AI.\n- **Cloud Storage**: Kapasitas penyimpanan data awan hingga 10 TB per klien.`,
       sources,
     };
   }
 
-  if (qLower.includes("iso") || qLower.includes("sertifikasi") || qLower.includes("keamanan") || qLower.includes("paten")) {
+  // 6. ISO & Paten
+  if (qLower.includes("iso") || qLower.includes("sertifikasi") || qLower.includes("paten") || qLower.includes("rnd")) {
     return {
-      answer: `Pencapaian keamanan dan riset teknologi Perusahaan ABC pada 2024:\n\n- Berhasil memperoleh **Sertifikasi ISO 27001** untuk standar keamanan informasi.\n- Tim Riset & Pengembangan (RnD) sukses mendaftarkan **5 paten teknologi baru**.`,
+      answer: `Pencapaian tata kelola dan riset Perusahaan ABC di tahun 2024:\n\n- Meraih **Sertifikasi ISO 27001** untuk sistem manajemen keamanan informasi.\n- Tim RnD mematenkan **5 teknologi baru** untuk mendukung ekosistem produk.`,
       sources,
     };
   }
 
+  // 7. Ringkasan
   if (isSummaryQuery) {
     return {
-      answer: `Berikut ringkasan dokumen **${primaryDoc.original_name}**:\n\n- **Profil**: Perusahaan ABC didirikan tahun 2010 di bidang teknologi informasi.\n- **Kinerja Keuangan**: Pendapatan tahun 2024 mencapai **Rp 50 miliar** dan ditargetkan **Rp 80 miliar** pada 2025.\n- **Produk Inti**: Sistem Manajemen Dokumen (200 klien), Platform AI Chatbot 24 jam, dan Cloud Storage hingga 10 TB.\n- **Pencapaian**: Sertifikasi ISO 27001, 5 paten baru, serta pertumbuhan tim dari 150 menjadi 250 karyawan.\n- **Rencana Mendatang**: Ekspansi ke Malaysia dan Singapura mulai Q1 2025.`,
+      answer: `Berikut ikhtisar ringkasan dari dokumen **${primaryDoc.original_name}**:\n\n- **Identitas**: Berdiri sejak tahun 2010 di bidang teknologi informasi.\n- **Keuangan**: Pendapatan 2024 mencapai **Rp 50 miliar**, target 2025 sebesar **Rp 80 miliar**.\n- **Solusi Utama**: Sistem Manajemen Dokumen (200 klien), Platform AI Chatbot 24 jam, dan Cloud Storage.\n- **Pencapaian**: ISO 27001, 5 paten baru, tim bertambah menjadi 250 personil.\n- **Arah Strategis**: Ekspansi ke Malaysia dan Singapura pada Q1 2025.`,
       sources,
     };
   }
 
-  // Generic excerpt response for uploaded documents
+  // Generic excerpt extraction for user uploaded files
   const lines = primaryChunk.text.split("\n").filter((l) => l.trim().length > 0);
   const relevantLines = lines.slice(0, 5).join("\n- ");
   return {
-    answer: `Berdasarkan informasi yang ditemukan dalam dokumen **${primaryDoc.original_name}**:\n\n- ${relevantLines}\n\n*Informasi ini disajikan sesuai dengan konteks dokumen yang telah diunggah.*`,
+    answer: `Berdasarkan analisis dokumen **${primaryDoc.original_name}**:\n\n- ${relevantLines}\n\n*Informasi diekstraksi langsung dari segmen teks dokumen yang tersimpan dalam basis pengetahuan RAG.*`,
     sources,
   };
 }
@@ -346,7 +427,6 @@ export const chatApi = {
       created_at: c.created_at,
       updated_at: c.messages[c.messages.length - 1]?.created_at || c.created_at,
     }));
-    // sort updated_at desc
     items.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     return { items, total: items.length };
   },
@@ -359,6 +439,16 @@ export const chatApi = {
     return found;
   },
 
+  updateConversationTitle: async (id: string, newTitle: string): Promise<void> => {
+    await new Promise((r) => setTimeout(r, 100));
+    const convs = getStored<ConversationDetail[]>(STORAGE_KEYS.CONVERSATIONS, DEFAULT_CONVERSATIONS);
+    const target = convs.find((c) => c.id === id);
+    if (target) {
+      target.title = newTitle.trim();
+      setStored(STORAGE_KEYS.CONVERSATIONS, convs);
+    }
+  },
+
   deleteConversation: async (id: string): Promise<void> => {
     await new Promise((r) => setTimeout(r, 200));
     const convs = getStored<ConversationDetail[]>(STORAGE_KEYS.CONVERSATIONS, DEFAULT_CONVERSATIONS);
@@ -367,12 +457,11 @@ export const chatApi = {
   },
 
   sendMessage: async (req: ChatRequest): Promise<ChatResponse> => {
-    await new Promise((r) => setTimeout(r, 600)); // natural typing latency
+    await new Promise((r) => setTimeout(r, 600));
     const convs = getStored<ConversationDetail[]>(STORAGE_KEYS.CONVERSATIONS, DEFAULT_CONVERSATIONS);
     const docs = getStored<Document[]>(STORAGE_KEYS.DOCUMENTS, DEFAULT_DOCUMENTS);
 
     let targetConv = req.conversation_id ? convs.find((c) => c.id === req.conversation_id) : undefined;
-    const isNew = !targetConv;
 
     if (!targetConv) {
       const convId = crypto.randomUUID();
@@ -395,8 +484,8 @@ export const chatApi = {
     };
     targetConv.messages.push(userMsg);
 
-    // Run RAG query
-    const ragResult = ragAnswer(req.question, docs);
+    // Agentic RAG
+    const ragResult = ragAnswer(req.question, docs, req.target_document_id, req.mode);
 
     const assistantMsg = {
       id: crypto.randomUUID(),
@@ -447,12 +536,10 @@ export const documentsApi = {
     const docIndex = docs.findIndex((d) => d.id === id);
     if (docIndex === -1) throw new Error("Dokumen tidak ditemukan");
 
-    // set to queued
     docs[docIndex].status = "queued";
     docs[docIndex].updated_at = new Date().toISOString();
     setStored(STORAGE_KEYS.DOCUMENTS, docs);
 
-    // Async pipeline transition: queued -> processing -> completed
     setTimeout(() => {
       const currentDocs = getStored<Document[]>(STORAGE_KEYS.DOCUMENTS, DEFAULT_DOCUMENTS);
       const idx = currentDocs.findIndex((d) => d.id === id);
@@ -482,22 +569,36 @@ export const documentsApi = {
   upload: async (file: File): Promise<{ id: string; original_name: string; status: string; message: string }> => {
     const docId = crypto.randomUUID();
     let textContent = "";
+    const isExcelOrCsv =
+      file.name.endsWith(".xlsx") ||
+      file.name.endsWith(".xls") ||
+      file.name.endsWith(".csv") ||
+      file.type.includes("sheet") ||
+      file.type.includes("csv");
 
     try {
-      if (file.type.includes("text") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
-        textContent = await file.text();
+      if (file.name.endsWith(".csv") || file.type.includes("text") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
+        const raw = await file.text();
+        if (file.name.endsWith(".csv")) {
+          const rows = raw.split(/\r?\n/).filter((r) => r.trim().length > 0);
+          textContent = `TABEL SPREADSHEET CSV (${file.name}):\n` + rows.map((r, i) => `Baris ${i + 1}: ${r}`).join("\n");
+        } else {
+          textContent = raw;
+        }
+      } else if (isExcelOrCsv) {
+        textContent = `DATA SPREADSHEET EXCEL: ${file.name}\nUkuran: ${(file.size / 1024).toFixed(1)} KB\nTipe: Microsoft Excel Worksheet (.xlsx/.xls)\nRingkasan: Berkas spreadsheet telah berhasil diindeks ke dalam knowledge base RAG. Data tabel dan metrik numerik siap diakses untuk analisis perbandingan, rekapitulasi data, dan penjabaran statistik.`;
       } else {
         textContent = `Dokumen: ${file.name}\nUkuran: ${(file.size / 1024).toFixed(1)} KB\nTipe: ${file.type || "file"}\nKonten dokumen telah diekstraksi dan siap diproses dalam basis pengetahuan RAG.`;
       }
     } catch {
-      textContent = `Dokumen: ${file.name} diproses ke dalam knowledge base.`;
+      textContent = `Dokumen: ${file.name} diproses ke dalam knowledge base RAG.`;
     }
 
     const newDoc: Document = {
       id: docId,
       original_name: file.name,
       file_size: file.size,
-      mime_type: file.type || "application/octet-stream",
+      mime_type: file.type || (isExcelOrCsv ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/octet-stream"),
       status: "queued",
       checksum: "chk_" + Math.random().toString(36).substring(2, 10),
       created_at: new Date().toISOString(),
@@ -517,7 +618,6 @@ export const documentsApi = {
     docs.unshift(newDoc);
     setStored(STORAGE_KEYS.DOCUMENTS, docs);
 
-    // Simulate async background ingestion pipeline
     setTimeout(() => {
       const currentDocs = getStored<Document[]>(STORAGE_KEYS.DOCUMENTS, DEFAULT_DOCUMENTS);
       const idx = currentDocs.findIndex((d) => d.id === docId);
@@ -532,7 +632,7 @@ export const documentsApi = {
             finalDocs[fIdx].status = "completed";
             setStored(STORAGE_KEYS.DOCUMENTS, finalDocs);
           }
-        }, 2500);
+        }, 2200);
       }
     }, 1200);
 
