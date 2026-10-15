@@ -49,10 +49,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.50"
           memory: 1024M
         reservations:
-          cpus: "0.25"
           memory: 256M
 
   # ----------------------------------------------------------------------------
@@ -94,10 +92,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.50"
           memory: 1024M
         reservations:
-          cpus: "0.25"
           memory: 256M
 
   # ----------------------------------------------------------------------------
@@ -128,10 +124,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2.0"
           memory: 2048M
         reservations:
-          cpus: "0.50"
           memory: 512M
 
   # ----------------------------------------------------------------------------
@@ -156,10 +150,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
           memory: 1024M
         reservations:
-          cpus: "0.20"
           memory: 256M
 
   # ----------------------------------------------------------------------------
@@ -186,15 +178,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.5"
           memory: 1536M
         reservations:
-          cpus: "0.25"
           memory: 512M
 
   # ----------------------------------------------------------------------------
   # 6. Local LLM Service: Ollama (Qwen 2.5: 3B)
   # Accessible at: http://127.0.0.1:11434
+  # Compatible with 2-CPU / Low-resource servers (no fixed CPU cap)
   # ----------------------------------------------------------------------------
   ollama:
     container_name: ai-chatbot-ollama
@@ -218,10 +209,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4.0"
           memory: 4096M
         reservations:
-          cpus: "1.0"
           memory: 1024M
 
   # ----------------------------------------------------------------------------

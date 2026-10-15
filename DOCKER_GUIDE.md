@@ -1,7 +1,7 @@
 # Panduan Docker & Docker Compose
 ### Spesifikasi Lingkungan: Ubuntu 22.04.5 LTS & Docker Engine 29.9.1
 
-Panduan ini disusun khusus untuk menjalankan project **AI Chatbot MVP** di sistem operasi **Ubuntu 22.04.5 LTS** menggunakan **Docker version 29.9.1** (Docker Compose V2 specification) dengan model lokal **Ollama (Qwen 2.5: 3B)**.
+Panduan ini disusun khusus untuk menjalankan project **AI Chatbot MVP & Agentic RAG** di sistem operasi **Ubuntu 22.04.5 LTS** menggunakan **Docker version 29.9.1** (Docker Compose V2 specification) dengan model lokal **Ollama (Qwen 2.5: 3B)**.
 
 ---
 
@@ -42,7 +42,7 @@ File `docker-compose.yml` mengorkestrasi 6 layanan utama + 1 helper auto-puller 
 
 ---
 
-## 3. Langkah Menjalankan Project (Fresh & Solved)
+## 3. Langkah Menjalankan Project (Sudah Disesuaikan & Diperbaiki)
 
 ### Langkah 1: Pastikan Tidak Ada File Ganda (compose.yaml)
 Jika di server Anda sebelumnya terdapat file `compose.yaml`, hapus agar Docker Compose hanya membaca `docker-compose.yml`:
@@ -57,7 +57,7 @@ File `.env` otomatis telah dibuat dengan port yang disesuaikan dan konfigurasi m
 cat .env
 ```
 
-### Langkah 3: Tarik Image & Jalankan Kontainer
+### Langkah 3: Build & Jalankan Kontainer
 Gunakan perintah Compose V2:
 ```bash
 # Tarik base image resmi
@@ -69,7 +69,7 @@ sudo docker compose up -d --build
 
 Container `ai-chatbot-ollama-pull` otomatis akan memeriksa apakah model `qwen2.5:3b` sudah ada di volume storage. Jika belum ada, kontainer ini akan mengunduh model tersebut secara otomatis.
 
-### Langkah 4: Periksa Status Kontainer & Healthcheck
+### Langkah 4: Periksa Status Kontainer
 ```bash
 sudo docker compose ps
 ```
@@ -125,21 +125,25 @@ curl http://127.0.0.1:11434/api/generate -d '{
 
 ## 6. Solusi Permasalahan (Troubleshooting yang Telah Diperbaiki)
 
-1. **Peringatan File Ganda (`Found multiple config files`)**:
-   - **Penyebab**: Terdapat `compose.yaml` dan `docker-compose.yml` sekaligus di direktori yang sama.
-   - **Solusi**: File `compose.yaml` telah dihapus dari repositori. Jika di server masih ada, jalankan `rm -f compose.yaml`.
+1. **Error `range of CPUs is from 0.01 to 2.00, as there are only 2 CPUs available`**:
+   - **Penyebab**: Server VPS Anda memiliki 2 CPU core, namun pada konfigurasi `ollama` sebelumnya didefinisikan limit `cpus: "4.0"`. Docker Engine versi 29 secara ketat menolak alokasi limit kontainer yang melebihi kapasitas fisik core host.
+   - **Solusi**: Nilai `cpus: "4.0"` telah dihapus dari `docker-compose.yml`. Alokasi CPU kini bersifat dinamis dan adaptif mengikuti 2 CPU host tanpa batasan kaku, mencegah error daemon Docker.
 
-2. **Error `401 UNAUTHORIZED` / `pull access denied` pada MinIO (`quay.io/minio/minio` atau `minio/minio`)**:
-   - **Penyebab**: MinIO secara resmi telah menghentikan dan mengunci distribusi image publik gratis di Docker Hub dan Quay.io.
-   - **Solusi**: Diganti menggunakan distribusi publik resmi **Chainguard**: `cgr.dev/chainguard/minio:latest`. Image ini 100% kompatibel penuh dengan MinIO S3 API, bebas biaya lisensi, aktif di-maintain komunitas global open source, dan bebas dari error autentikasi 401.
+2. **Error `Tidak menghasilkan jawaban` saat ditanya `1+1=2` atau pertanyaan umum**:
+   - **Penyebab**: Intent classification sebelumnya salah mengklasifikasikan pertanyaan meta seperti *"bagaimana caranya agar project saya bisa menjawab pertanyaan 1+1=2..."* sebagai persamaan matematika murni, serta mengembalikan guardrail kosong jika tidak ada dokumen yang cocok.
+   - **Solusi**: Diterapkan **Dual-Path Intent Classifier** baru yang membedakan:
+     - Pertanyaan arsitektur sistem (menjelaskan 5 pilar sistem RAG & Qwen 2.5 secara detail).
+     - Pertanyaan verifikasi aritmatika murni (`1+1=2` -> validasi BENAR & langkah kalkulasi).
+     - Pertanyaan sapaan & identitas asisten AI.
+     - Pengetahuan umum (AI, RAG, dsb) dengan penjelasan komprehensif.
 
-3. **Error `No such image: docker.n8n.io/n8nio/n8n:latest`**:
-   - **Penyebab**: Registry custom `docker.n8n.io` sering mengalami timeout atau tidak dikenali oleh daemon Docker standar.
-   - **Solusi**: Diganti dengan image resmi Docker Hub: `n8nio/n8n:latest`.
+3. **Peringatan File Ganda (`Found multiple config files`)**:
+   - **Penyebab**: Terdapat `compose.yaml` dan `docker-compose.yml` di folder yang sama.
+   - **Solusi**: File `compose.yaml` telah dihapus.
 
-4. **Status `Interrupted` pada `pgvector/pgvector:pg17`**:
-   - **Penyebab**: Terjadi akibat kegagalan pull pada MinIO sehingga Docker membatalkan proses download image lainnya secara bersamaan.
-   - **Solusi**: Setelah MinIO dan n8n diperbaiki, jalankan `docker compose pull` untuk mengunduh semua image secara bersih.
+4. **Error `401 UNAUTHORIZED` pada MinIO**:
+   - **Penyebab**: MinIO membatasi image publik di Docker Hub dan Quay.io.
+   - **Solusi**: Diganti menggunakan distribusi publik resmi Chainguard `cgr.dev/chainguard/minio:latest`.
 
 ---
 
@@ -166,7 +170,4 @@ sudo docker compose stop
 
 # Menghapus kontainer (volume data database, MinIO & model Ollama tetap aman tersimpan)
 sudo docker compose down
-
-# Menghapus kontainer beserta volume data (HATI-HATI: Data DB, S3 & model AI terhapus)
-sudo docker compose down -v
 ```
