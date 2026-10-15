@@ -16,6 +16,24 @@ export interface SourceCitation {
   document_name: string;
   page?: number;
   chunk_id?: string;
+  score?: number; // e.g. 0.94 for 94% relevance
+}
+
+export interface RetrievedChunkContext {
+  id: string;
+  document_id: string;
+  document_name: string;
+  page: number;
+  text: string;
+  score: number;
+  matched_terms?: string[];
+}
+
+export interface RetrievalMeta {
+  latency_ms: number;
+  total_chunks_searched: number;
+  chunks_matched: number;
+  model_used: string;
 }
 
 export interface Message {
@@ -24,6 +42,8 @@ export interface Message {
   content: string;
   created_at: string;
   sources?: SourceCitation[];
+  retrieved_chunks?: RetrievedChunkContext[];
+  retrieval_meta?: RetrievalMeta;
 }
 
 export interface Conversation {
@@ -65,6 +85,8 @@ export interface ChatRequest {
   conversation_id?: string;
   target_document_id?: string;
   mode?: "strict" | "exploratory";
+  top_k?: number;
+  similarity_threshold?: number;
 }
 
 export interface ChatResponse {
@@ -72,4 +94,6 @@ export interface ChatResponse {
   answer: string;
   sources: SourceCitation[];
   status: string;
+  retrieved_chunks?: RetrievedChunkContext[];
+  retrieval_meta?: RetrievalMeta;
 }

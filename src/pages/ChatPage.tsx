@@ -3,7 +3,15 @@ import { useSearchParams } from "react-router-dom";
 import ProtectedLayout from "@/components/layout/ProtectedLayout";
 import ChatMessage from "@/components/chat/ChatMessage";
 import ChatInput from "@/components/chat/ChatInput";
-import { chatApi, documentsApi, getApiError, type SourceCitation, type Document } from "@/lib/api";
+import {
+  chatApi,
+  documentsApi,
+  getApiError,
+  type SourceCitation,
+  type Document,
+  type RetrievedChunkContext,
+  type RetrievalMeta,
+} from "@/lib/api";
 import { useToast } from "@/contexts/ToastContext";
 import {
   MessageSquare,
@@ -16,6 +24,8 @@ import {
   FileText,
   Filter,
   Sparkles,
+  Sliders,
+  HelpCircle,
 } from "lucide-react";
 
 interface LocalMessage {
@@ -23,6 +33,8 @@ interface LocalMessage {
   role: "user" | "assistant";
   content: string;
   sources?: SourceCitation[];
+  retrieved_chunks?: RetrievedChunkContext[];
+  retrieval_meta?: RetrievalMeta;
   timestamp?: string;
 }
 
@@ -36,10 +48,15 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Fase 4 & 5 Enhancements
+  // RAG Advanced Configuration
   const [availableDocs, setAvailableDocs] = useState<Document[]>([]);
   const [targetDocId, setTargetDocId] = useState<string>("all");
   const [ragMode, setRagMode] = useState<"strict" | "exploratory">("strict");
+  const [topK, setTopK] = useState<number>(4);
+  const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.15);
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Title Editing State
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState("");
 
@@ -67,6 +84,8 @@ export default function ChatPage() {
               content: m.content,
               timestamp: m.created_at,
               sources: m.sources,
+              retrieved_chunks: m.retrieved_chunks,
+              retrieval_meta: m.retrieval_meta,
             }))
           );
         })
@@ -101,7 +120,10 @@ export default function ChatPage() {
           conversation_id: conversationId,
           target_document_id: targetDocId !== "all" ? targetDocId : undefined,
           mode: ragMode,
+          top_k: topK,
+          similarity_threshold: similarityThreshold,
         });
+
         setConversationId(res.conversation_id);
         setSearchParams({ conv: res.conversation_id });
         setMessages((prev) => [
@@ -111,6 +133,8 @@ export default function ChatPage() {
             role: "assistant",
             content: res.answer,
             sources: res.sources,
+            retrieved_chunks: res.retrieved_chunks,
+            retrieval_meta: res.retrieval_meta,
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -121,7 +145,7 @@ export default function ChatPage() {
         setSending(false);
       }
     },
-    [sending, conversationId, targetDocId, ragMode, addToast, setSearchParams]
+    [sending, conversationId, targetDocId, ragMode, topK, similarityThreshold, addToast, setSearchParams]
   );
 
   const handleNewChat = () => {
@@ -148,6 +172,7 @@ export default function ChatPage() {
     const lines = [
       `# ${conversationTitle ?? "Percakapan AI Chatbot"}`,
       `Tanggal: ${new Date().toLocaleDateString("id-ID")}`,
+      `Konfigurasi RAG: Mode ${ragMode}, Top-K ${topK}, Threshold ${Math.round(similarityThreshold * 100)}%`,
       "",
       "---",
       "",
@@ -160,7 +185,7 @@ export default function ChatPage() {
         lines.push("");
         lines.push("**Sumber Rujukan:**");
         m.sources.forEach((s) => {
-          lines.push(`- ${s.document_name} (Hal. ${s.page ?? 1})`);
+          lines.push(`- ${s.document_name} (${s.page ? `Hal. ${s.page}` : ""}${s.score ? ` • Relevansi: ${Math.round(s.score * 100)}%` : ""})`);
         });
       }
       lines.push("");
@@ -234,12 +259,27 @@ export default function ChatPage() {
             )}
             {conversationId && !isEditingTitle && (
               <p className="text-[11px] text-gray-400 font-mono mt-0.5">
-                ID: {conversationId.slice(0, 8)}...
+                ID: {conversationId.slice(0, 8)}... • RAG Engine V2
               </p>
             )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* RAG Parameters Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowSettings((prev) => !prev)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition shadow-xs ${
+                showSettings
+                  ? "bg-primary-50 border-primary-300 text-primary-700"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+              title="Konfigurasi Parameter RAG"
+            >
+              <Sliders size={13} />
+              <span className="hidden sm:inline">Konfigurasi RAG</span>
+            </button>
+
             {/* Export Chat Button */}
             {messages.length > 0 && (
               <button
@@ -264,11 +304,11 @@ export default function ChatPage() {
           </div>
         </header>
 
-        {/* Sub-header / Agentic RAG Controls */}
+        {/* Sub-header / Quick Target Document Selector */}
         <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/70 px-4 py-2 sm:px-6 text-xs text-gray-600">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-gray-500 flex items-center gap-1">
-              <Filter size={12} /> Sumber Acuan:
+              <Filter size={12} /> Target RAG:
             </span>
             <select
               value={targetDocId}
@@ -286,53 +326,112 @@ export default function ChatPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-1 text-[11px]">
-            <span className="text-gray-400 hidden sm:inline">Mode:</span>
-            <button
-              type="button"
-              onClick={() => setRagMode(ragMode === "strict" ? "exploratory" : "strict")}
-              className={`rounded-md px-2 py-0.5 font-medium transition ${
-                ragMode === "strict"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-purple-100 text-purple-700"
-              }`}
-              title="Klik untuk ganti mode penalaran RAG"
-            >
-              {ragMode === "strict" ? "Ketat Dokumen" : "Eksplanatif"}
-            </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 text-[11px]">
+              <span className="text-gray-400 hidden sm:inline">Penalaran:</span>
+              <button
+                type="button"
+                onClick={() => setRagMode(ragMode === "strict" ? "exploratory" : "strict")}
+                className={`rounded-md px-2 py-0.5 font-medium transition ${
+                  ragMode === "strict"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-purple-100 text-purple-800"
+                }`}
+                title="Klik untuk ganti mode penalaran RAG"
+              >
+                {ragMode === "strict" ? "Ketat Dokumen" : "Eksplanatif"}
+              </button>
+            </div>
           </div>
         </div>
+
+        {/* RAG Settings Drawer Panel */}
+        {showSettings && (
+          <div className="border-b border-primary-200 bg-gradient-to-r from-primary-50/50 to-blue-50/40 px-4 py-3 sm:px-6 animate-fade-in-up">
+            <div className="mx-auto max-w-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+              <div className="space-y-1">
+                <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                  <Sliders size={13} className="text-primary-600" /> Pengaturan Retrieval RAG
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  Algoritma: Hybrid BM25 + Semantic N-gram Scoring + LLM Grounding
+                </p>
+              </div>
+
+              <div className="flex items-center gap-6">
+                {/* Top-K Chunks Slider */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600 font-medium">Top-K Chunks:</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    value={topK}
+                    onChange={(e) => setTopK(parseInt(e.target.value, 10))}
+                    className="w-20 accent-primary-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-primary-700 w-4 text-center">{topK}</span>
+                </div>
+
+                {/* Similarity Threshold Slider */}
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600 font-medium">Threshold:</span>
+                  <input
+                    type="range"
+                    min={5}
+                    max={60}
+                    step={5}
+                    value={Math.round(similarityThreshold * 100)}
+                    onChange={(e) => setSimilarityThreshold(parseInt(e.target.value, 10) / 100)}
+                    className="w-20 accent-primary-600 cursor-pointer"
+                  />
+                  <span className="font-bold text-primary-700 w-8 text-center">
+                    {Math.round(similarityThreshold * 100)}%
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(false)}
+                  className="rounded p-1 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Messages Content */}
         <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 scrollbar-thin">
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 text-center px-2">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 shadow-xs">
-                <MessageSquare className="text-primary-500" size={28} />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 shadow-xs border border-primary-100">
+                <MessageSquare className="text-primary-600" size={28} />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-gray-800">Mulai percakapan</h2>
+                <h2 className="text-lg font-bold text-gray-900">Mulai Percakapan RAG</h2>
                 <p className="mt-1 text-sm text-gray-500 max-w-sm">
-                  Ajukan pertanyaan seputar dokumen laporan PDF atau lembar spreadsheet Excel Anda.
+                  Ajukan pertanyaan seputar dokumen laporan PDF, laporan keuangan, atau lembar spreadsheet Excel Anda.
                 </p>
               </div>
 
               {/* Suggestions */}
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 max-w-md w-full">
+              <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-2 max-w-lg w-full">
                 {[
-                  "Ringkas dokumen ini",
-                  "Berapa pendapatan tahun 2024?",
+                  "Ringkas laporan tahunan 2024",
+                  "Berapa pendapatan dan target 2025?",
                   "Rekap kinerja anggaran Excel",
-                  "Apa rencana ekspansi 2025?",
+                  "Apa saja produk unggulan perusahaan?",
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
                     onClick={() => handleSend(suggestion)}
                     disabled={sending}
-                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-left text-xs text-gray-700 hover:bg-gray-50 hover:border-primary-300 transition shadow-xs group"
+                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-primary-400 transition shadow-xs group"
                   >
-                    <Sparkles size={13} className="text-primary-500 shrink-0 group-hover:scale-110 transition" />
+                    <Sparkles size={14} className="text-primary-500 shrink-0 group-hover:scale-110 transition" />
                     <span className="truncate">{suggestion}</span>
                   </button>
                 ))}
@@ -346,6 +445,8 @@ export default function ChatPage() {
                   role={msg.role}
                   content={msg.content}
                   sources={msg.sources}
+                  retrieved_chunks={msg.retrieved_chunks}
+                  retrieval_meta={msg.retrieval_meta}
                   timestamp={msg.timestamp}
                 />
               ))}
@@ -359,8 +460,8 @@ export default function ChatPage() {
         <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3.5 sm:px-6 shadow-xs">
           <div className="mx-auto max-w-3xl">
             <ChatInput onSend={handleSend} disabled={sending} />
-            <p className="mt-2 text-center text-[11px] text-gray-400">
-              Jawaban digenerasi otomatis berdasarkan basis pengetahuan dokumen & spreadsheet Excel yang diunggah.
+            <p className="mt-2 text-center text-[11px] text-gray-400 flex items-center justify-center gap-1.5">
+              <span>Sistem RAG aktif dengan Hybrid BM25 + Gemini 3.8 Flash • Jawaban grounded dengan bukti dokumen.</span>
             </p>
           </div>
         </div>
