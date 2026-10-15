@@ -461,7 +461,7 @@ export default function ChatPage() {
           <div className="mx-auto max-w-3xl">
             <ChatInput onSend={handleSend} disabled={sending} />
             <p className="mt-2 text-center text-[11px] text-gray-400 flex items-center justify-center gap-1.5">
-              <span>Sistem RAG aktif dengan Hybrid BM25 + Gemini 3.8 Flash • Jawaban grounded dengan bukti dokumen.</span>
+              <span>Sistem RAG aktif • Model: Ollama Qwen 2.5 (3B) &amp; Hybrid BM25 • Jawaban grounded dengan bukti dokumen.</span>
             </p>
           </div>
         </div>

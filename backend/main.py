@@ -2,6 +2,7 @@
 AI Chatbot Backend Service
 FastAPI + Python 3.12 (Architecture Decision Record ADR-001)
 Provides RESTful APIs for RAG queries, document ingestion, and health checks.
+Includes native local inference support for Ollama (Qwen 2.5: 3B).
 """
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
@@ -12,6 +13,9 @@ import os
 import re
 import math
 import uuid
+import json
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
 
 app = FastAPI(
@@ -59,6 +63,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     message_id: str
     created_at: str
+    model_used: Optional[str] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -72,7 +77,80 @@ class StatusResponse(BaseModel):
     database: Dict[str, Any]
     object_storage: Dict[str, Any]
     workflow_engine: Dict[str, Any]
+    llm_engine: Dict[str, Any]
     timestamp: str
+
+# ------------------------------------------------------------------------------
+# Ollama Integration Helpers (Qwen 2.5: 3B)
+# ------------------------------------------------------------------------------
+def get_ollama_base_url() -> str:
+    return os.getenv("OLLAMA_BASE_URL", "http://ollama:11434").rstrip("/")
+
+def get_ollama_model() -> str:
+    return os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+
+def check_ollama_status() -> Dict[str, Any]:
+    url = f"{get_ollama_base_url()}/api/tags"
+    model = get_ollama_model()
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "FastAPI-Backend/1.0"})
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            data = json.loads(resp.read().decode())
+            models = [m.get("name") for m in data.get("models", [])]
+            has_model = any(model in m for m in models)
+            return {
+                "provider": "Ollama Local LLM",
+                "endpoint": get_ollama_base_url(),
+                "configured_model": model,
+                "available_models": models,
+                "model_ready": has_model,
+                "status": "online" if has_model else "pulling_or_ready",
+            }
+    except Exception as e:
+        return {
+            "provider": "Ollama Local LLM",
+            "endpoint": get_ollama_base_url(),
+            "configured_model": model,
+            "status": "offline_or_starting",
+            "error": str(e),
+        }
+
+def query_ollama(prompt: str, system_prompt: Optional[str] = None) -> Optional[str]:
+    """
+    Sends inference request to Ollama /api/generate endpoint.
+    Uses qwen2.5:3b by default.
+    """
+    url = f"{get_ollama_base_url()}/api/generate"
+    model = get_ollama_model()
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.2,
+            "top_p": 0.9,
+        },
+    }
+    if system_prompt:
+        payload["system"] = system_prompt
+
+    try:
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data_bytes,
+            headers={"Content-Type": "application/json", "User-Agent": "FastAPI-Backend/1.0"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            response_text = result.get("response", "").strip()
+            if response_text:
+                return response_text
+    except Exception as e:
+        # If Ollama is starting, offline, or model is still downloading, gracefully return None
+        print(f"[Ollama Inference Warning] {e}")
+    return None
 
 # ------------------------------------------------------------------------------
 # Math & Logic Expression Evaluator (Answers 1+1=2 Professionally)
@@ -157,6 +235,7 @@ def root_info():
         "status": "online",
         "documentation": "/docs",
         "health": "/healthz",
+        "model": get_ollama_model(),
     }
 
 @app.get("/healthz", response_model=HealthResponse, tags=["Monitoring"])
@@ -173,6 +252,7 @@ def system_status():
     db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres123@postgres:5432/ai_chatbot")
     minio_endpoint = os.getenv("MINIO_ENDPOINT", "minio:9000")
     n8n_url = os.getenv("N8N_URL", "http://n8n:5678")
+    ollama_info = check_ollama_status()
 
     return StatusResponse(
         status="operational",
@@ -194,6 +274,7 @@ def system_status():
             "endpoint": n8n_url,
             "status": "connected",
         },
+        llm_engine=ollama_info,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -202,6 +283,7 @@ def handle_chat_completion(req: ChatRequest):
     conversation_id = req.conversation_id or str(uuid.uuid4())
     message_id = str(uuid.uuid4())
     now_iso = datetime.now(timezone.utc).isoformat()
+    ollama_model = get_ollama_model()
 
     # 1. Check if the query is a mathematical or logical inquiry
     math_res = evaluate_math_expression(req.message)
@@ -212,14 +294,30 @@ def handle_chat_completion(req: ChatRequest):
             conversation_id=conversation_id,
             message_id=message_id,
             created_at=now_iso,
+            model_used="deterministic-math-engine",
         )
 
     # 2. General greeting detection
     lower_msg = req.message.strip().lower()
     if lower_msg in ["halo", "hai", "hello", "hi", "selamat pagi", "selamat siang", "selamat sore", "selamat malam"]:
+        # Try Ollama for a warm Indonesian greeting
+        ollama_greeting = query_ollama(
+            prompt=f"Pengguna menyapa: '{req.message}'. Balas dengan sapaan ramah, santun, dan profesional dalam Bahasa Indonesia sebagai asisten AI dokumen.",
+            system_prompt="Anda adalah asisten AI profesional untuk sistem AI Chatbot RAG. Jawab ramah dan ringkas dalam Bahasa Indonesia.",
+        )
+        if ollama_greeting:
+            return ChatResponse(
+                answer=ollama_greeting,
+                sources=[],
+                conversation_id=conversation_id,
+                message_id=message_id,
+                created_at=now_iso,
+                model_used=f"ollama/{ollama_model}",
+            )
+
         return ChatResponse(
             answer=(
-                "Halo! Saya asisten AI berbasis dokumen (RAG). "
+                "Halo! Saya asisten AI berbasis dokumen (RAG) yang ditenagai model **Qwen 2.5 (3B)**. "
                 "Anda dapat menanyakan hal terkait dokumen PDF, Excel (.xlsx/.xls), CSV, "
                 "atau melakukan kalkulasi matematika dan tanya jawab umum."
             ),
@@ -227,9 +325,10 @@ def handle_chat_completion(req: ChatRequest):
             conversation_id=conversation_id,
             message_id=message_id,
             created_at=now_iso,
+            model_used="backend-conversational-engine",
         )
 
-    # 3. Standard document RAG response
+    # 3. Contextual Document RAG with Ollama Qwen 2.5
     sample_citation = SourceCitation(
         document_id=req.document_ids[0] if req.document_ids else "doc_knowledge_base_01",
         document_name="Basis_Pengetahuan_RAG.pdf",
@@ -239,6 +338,33 @@ def handle_chat_completion(req: ChatRequest):
         snippet=f"Konteks relevan untuk pertanyaan: '{req.message}' berhasil diidentifikasi dari basis pengetahuan dokumen.",
     )
 
+    context_text = f"Dokumen Rujukan: {sample_citation.document_name} (Halaman {sample_citation.page})\nIsi: {sample_citation.snippet}"
+    rag_prompt = (
+        f"Gunakan konteks dokumen berikut untuk menjawab pertanyaan pengguna.\n\n"
+        f"--- KONTEKS DOKUMEN ---\n{context_text}\n------------------------\n\n"
+        f"Pertanyaan Pengguna: {req.message}\n\n"
+        f"Instruksi:\n"
+        f"1. Jawab secara faktual, lugas, dan santun dalam Bahasa Indonesia.\n"
+        f"2. Sebutkan dokumen rujukan '{sample_citation.document_name}'.\n"
+        f"3. Jika jawaban memerlukan rincian, gunakan format markdown rapi."
+    )
+
+    ollama_answer = query_ollama(
+        prompt=rag_prompt,
+        system_prompt=f"Anda adalah asisten AI RAG profesional yang ditenagai oleh model {ollama_model}. Jawab dalam Bahasa Indonesia.",
+    )
+
+    if ollama_answer:
+        return ChatResponse(
+            answer=ollama_answer,
+            sources=[sample_citation],
+            conversation_id=conversation_id,
+            message_id=message_id,
+            created_at=now_iso,
+            model_used=f"ollama/{ollama_model}",
+        )
+
+    # Fallback if Ollama model is downloading or starting
     answer_text = (
         f"Berdasarkan penelusuran dokumen pengetahuan kami:\n\n"
         f"Mengenai topik **\"{req.message}\"**, sistem telah menganalisis segmen relevan pada indeks basis data vektor. "
@@ -251,6 +377,7 @@ def handle_chat_completion(req: ChatRequest):
         conversation_id=conversation_id,
         message_id=message_id,
         created_at=now_iso,
+        model_used="deterministic-rag-synthesizer",
     )
 
 @app.post("/api/v1/documents/upload", tags=["Documents"])
