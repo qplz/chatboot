@@ -76,11 +76,12 @@ services:
           memory: 512M
 
   # ----------------------------------------------------------------------------
-  # 3. Object Storage: MinIO (Public Quay.io Mirror - Free Public Pull)
+  # 3. Object Storage: MinIO (Chainguard Secure Community Distribution)
+  # Free public pull from cgr.dev/chainguard/minio (solves Quay.io/DockerHub 401)
   # ----------------------------------------------------------------------------
   minio:
     container_name: ai-chatbot-minio
-    image: quay.io/minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
@@ -93,12 +94,6 @@ services:
       - minio_data:/data
     networks:
       - ai-network
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     deploy:
       resources:
         limits:

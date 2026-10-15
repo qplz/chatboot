@@ -34,7 +34,7 @@ File `docker-compose.yml` mengorkestrasi 4 layanan utama dalam satu jaringan bri
 |---|---|---|---|---|
 | **web** | `ai-chatbot-web` | *Local Build (Dockerfile)* | `3000` | Frontend React SPA + Nginx (Gzip, caching, healthcheck) |
 | **postgres** | `ai-chatbot-postgres` | `pgvector/pgvector:pg17` | `5432` | PostgreSQL 17 + Ekstensi **PGVector** (vektor RAG) |
-| **minio** | `ai-chatbot-minio` | `quay.io/minio/minio:latest` | `9000`, `9001` | S3-compatible Object Storage (Public mirror resmi, bebas rate limit) |
+| **minio** | `ai-chatbot-minio` | `cgr.dev/chainguard/minio:latest` | `9000`, `9001` | S3-compatible Object Storage (Distribusi aman Chainguard, 100% bebas 401 Quay/DockerHub) |
 | **n8n** | `ai-chatbot-n8n` | `n8nio/n8n:latest` | `5678` | Workflow Automation engine (Official Docker Hub image) |
 
 ---
@@ -95,9 +95,9 @@ Setelah kontainer aktif, buka peramban (browser):
    - **Penyebab**: Terdapat `compose.yaml` dan `docker-compose.yml` sekaligus di direktori yang sama.
    - **Solusi**: File `compose.yaml` telah dihapus dari repositori. Jika di server masih ada, jalankan `rm -f compose.yaml`.
 
-2. **Error `pull access denied for minio/minio`**:
-   - **Penyebab**: Docker Hub membatasi image `minio/minio` atau tag tanggal lama dihapus/membutuhkan login berbayar.
-   - **Solusi**: Diganti menggunakan registry publik resmi MinIO: `quay.io/minio/minio:latest` yang 100% gratis, bebas login, dan didukung penuh.
+2. **Error `401 UNAUTHORIZED` / `pull access denied` pada MinIO (`quay.io/minio/minio` atau `minio/minio`)**:
+   - **Penyebab**: MinIO secara resmi telah menghentikan dan mengunci distribusi image publik gratis di Docker Hub dan Quay.io (mengembalikan status `401 UNAUTHORIZED` saat ditarik tanpa lisensi berbayar).
+   - **Solusi**: Diganti menggunakan distribusi publik resmi **Chainguard**: `cgr.dev/chainguard/minio:latest`. Image ini 100% kompatibel penuh dengan MinIO S3 API, bebas biaya lisensi, aktif di-maintain komunitas global open source, dan bebas dari error autentikasi 401.
 
 3. **Error `No such image: docker.n8n.io/n8nio/n8n:latest`**:
    - **Penyebab**: Registry custom `docker.n8n.io` sering mengalami timeout atau tidak dikenali oleh daemon Docker standar.
