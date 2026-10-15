@@ -4,11 +4,19 @@ name: ai-chatbot
 # Docker Compose Configuration
 # Target OS: Ubuntu 22.04.5 LTS (Jammy Jellyfish)
 # Docker Engine: 29.9.1 / Docker Compose V2 Specification
+#
+# Configured Service Ports (Isolated Localhost Bindings):
+# - Frontend:    127.0.0.1:8080 (Mapped to internal container port 3000)
+# - Backend:     127.0.0.1:8000 (Mapped to internal container port 8000)
+# - PostgreSQL:  127.0.0.1:5432 (Mapped to internal container port 5432)
+# - MinIO S3:    127.0.0.1:9000 (API) & 127.0.0.1:9001 (Console)
+# - n8n:         127.0.0.1:5678 (Workflow Automation)
 # ==============================================================================
 
 services:
   # ----------------------------------------------------------------------------
   # 1. Frontend Web Service (React SPA + Nginx)
+  # Accessible at: http://127.0.0.1:8080
   # ----------------------------------------------------------------------------
   web:
     container_name: ai-chatbot-web
@@ -17,13 +25,15 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8080}:3000"
     environment:
       - NODE_ENV=production
       - VITE_APP_NAME=${APP_NAME:-AI Chatbot MVP}
-      - VITE_API_BASE_URL=${API_BASE_URL:-}
+      - VITE_API_BASE_URL=${API_BASE_URL:-http://127.0.0.1:8000}
     depends_on:
       postgres:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     networks:
       - ai-network
@@ -43,14 +53,56 @@ services:
           memory: 256M
 
   # ----------------------------------------------------------------------------
-  # 2. Database Service: PostgreSQL 17 with PGVector Extension
+  # 2. Backend API Service (FastAPI + Python 3.12 - ADR-001)
+  # Accessible at: http://127.0.0.1:8000 (Docs at http://127.0.0.1:8000/docs)
+  # ----------------------------------------------------------------------------
+  backend:
+    container_name: ai-chatbot-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_BIND_IP:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/${POSTGRES_DB:-ai_chatbot}
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin123}
+      - N8N_URL=http://n8n:5678
+      - CORS_ORIGINS=http://localhost:8080,http://127.0.0.1:8080,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 1024M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  # ----------------------------------------------------------------------------
+  # 3. Database Service: PostgreSQL 17 with PGVector Extension
+  # Accessible at: 127.0.0.1:5432
   # ----------------------------------------------------------------------------
   postgres:
     container_name: ai-chatbot-postgres
     image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ai_chatbot}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -76,8 +128,8 @@ services:
           memory: 512M
 
   # ----------------------------------------------------------------------------
-  # 3. Object Storage: MinIO (Chainguard Secure Community Distribution)
-  # Free public pull from cgr.dev/chainguard/minio (solves Quay.io/DockerHub 401)
+  # 4. Object Storage: MinIO (Chainguard Secure Distribution)
+  # Accessible at: 127.0.0.1:9000 (S3 API) & 127.0.0.1:9001 (Web Console GUI)
   # ----------------------------------------------------------------------------
   minio:
     container_name: ai-chatbot-minio
@@ -85,8 +137,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - "${S3_PORT:-9000}:9000"         # S3 API Endpoint
-      - "${S3_CONSOLE_PORT:-9001}:9001" # Web Console GUI
+      - "${MINIO_BIND_IP:-127.0.0.1}:${S3_PORT:-9000}:9000"         # S3 API Endpoint
+      - "${MINIO_BIND_IP:-127.0.0.1}:${S3_CONSOLE_PORT:-9001}:9001" # Web Console GUI
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
@@ -104,14 +156,15 @@ services:
           memory: 256M
 
   # ----------------------------------------------------------------------------
-  # 4. Workflow Engine: n8n (Official Docker Hub Image)
+  # 5. Workflow Automation Engine: n8n (Official Docker Hub Image)
+  # Accessible at: http://127.0.0.1:5678
   # ----------------------------------------------------------------------------
   n8n:
     container_name: ai-chatbot-n8n
     image: n8nio/n8n:latest
     restart: unless-stopped
     ports:
-      - "${N8N_PORT:-5678}:5678"
+      - "${N8N_BIND_IP:-127.0.0.1}:${N8N_PORT:-5678}:5678"
     environment:
       - N8N_HOST=${N8N_HOST:-localhost}
       - N8N_PORT=5678

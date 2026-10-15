@@ -28,14 +28,15 @@ docker compose version
 
 ## 2. Struktur Layanan (Services)
 
-File `docker-compose.yml` mengorkestrasi 4 layanan utama dalam satu jaringan bridge privat (`ai_chatbot_network`):
+File `docker-compose.yml` mengorkestrasi 5 layanan utama dalam satu jaringan bridge privat (`ai_chatbot_network`) dengan port host terisolasi ke `127.0.0.1`:
 
-| Service | Container Name | Image Resmi | Port Host | Fungsi |
+| Service | Container Name | Image / Build | Port Host (Binding) | Fungsi |
 |---|---|---|---|---|
-| **web** | `ai-chatbot-web` | *Local Build (Dockerfile)* | `3000` | Frontend React SPA + Nginx (Gzip, caching, healthcheck) |
-| **postgres** | `ai-chatbot-postgres` | `pgvector/pgvector:pg17` | `5432` | PostgreSQL 17 + Ekstensi **PGVector** (vektor RAG) |
-| **minio** | `ai-chatbot-minio` | `cgr.dev/chainguard/minio:latest` | `9000`, `9001` | S3-compatible Object Storage (Distribusi aman Chainguard, 100% bebas 401 Quay/DockerHub) |
-| **n8n** | `ai-chatbot-n8n` | `n8nio/n8n:latest` | `5678` | Workflow Automation engine (Official Docker Hub image) |
+| **web** | `ai-chatbot-web` | *Local Build (`Dockerfile`)* | `127.0.0.1:8080` | Frontend React SPA + Nginx (Gzip, caching, healthcheck, `/api/` reverse proxy) |
+| **backend** | `ai-chatbot-backend` | *Local Build (`backend/`)* | `127.0.0.1:8000` | Backend API FastAPI + Python 3.12 (RAG, kalkulasi matematika, Swagger docs di `/docs`) |
+| **postgres** | `ai-chatbot-postgres` | `pgvector/pgvector:pg17` | `127.0.0.1:5432` | PostgreSQL 17 + Ekstensi **PGVector** (vektor RAG) |
+| **minio** | `ai-chatbot-minio` | `cgr.dev/chainguard/minio:latest` | `127.0.0.1:9000`, `127.0.0.1:9001` | S3-compatible Object Storage (Distribusi aman Chainguard, 100% bebas 401 Quay/DockerHub) |
+| **n8n** | `ai-chatbot-n8n` | `n8nio/n8n:latest` | `127.0.0.1:5678` | Workflow Automation engine (Official Docker Hub image) |
 
 ---
 
@@ -47,42 +48,47 @@ Jika di server Anda sebelumnya terdapat file `compose.yaml`, hapus agar Docker C
 rm -f /opt/agentic-rag/compose.yaml
 ```
 
-### Langkah 2: Siapkan File Environment (.env)
-Salin template konfigurasi jika belum ada:
+### Langkah 2: File Environment (.env) Sudah Disediakan
+File `.env` otomatis telah dibuat dengan port yang disesuaikan:
 ```bash
-cp .env.example .env
+# Periksa file .env
+cat .env
 ```
 
 ### Langkah 3: Tarik Image & Jalankan Kontainer
 Gunakan perintah Compose V2:
 ```bash
-# Tarik image terlebih dahulu untuk memastikan semua image berhasil diunduh
-docker compose pull
+# Tarik base image resmi
+sudo docker compose pull
 
-# Jalankan seluruh stack di background (detached mode) bersama build frontend
-docker compose up -d --build
+# Build service lokal (Frontend & Backend) dan jalankan di background
+sudo docker compose up -d --build
 ```
 
 ### Langkah 4: Periksa Status Kontainer & Healthcheck
 ```bash
-docker compose ps
+sudo docker compose ps
 ```
-Semua container akan berstatus `running` atau `healthy`.
+Semua 5 kontainer akan berstatus `running` (Up) dan `healthy`.
 
 ---
 
 ## 4. Akses Aplikasi & Dashboard
 
-Setelah kontainer aktif, buka peramban (browser):
+Setelah kontainer aktif, akses layanan melalui IP localhost:
 
-- **Aplikasi Web Chatbot**: `http://localhost:3000` atau `http://<IP-VPS-Ubuntu>:3000`
+- **Frontend Web Chatbot**: `http://127.0.0.1:8080`
   - *Akun Admin*: `admin@example.com` / `Admin123!`
   - *Akun User*: `user@example.com` / `User123!`
-- **MinIO Storage Console**: `http://localhost:9001`
+- **Backend API & Swagger Docs**: `http://127.0.0.1:8000/docs`
+  - *Endpoint Status*: `http://127.0.0.1:8000/api/v1/status`
+  - *Liveness Probe*: `http://127.0.0.1:8000/healthz`
+- **MinIO Storage Console**: `http://127.0.0.1:9001`
   - *User*: `admin`
   - *Password*: `minioadmin123`
-- **n8n Workflow**: `http://localhost:5678`
-- **PostgreSQL PGVector**: `localhost:5432`
+  - *S3 API Endpoint*: `http://127.0.0.1:9000`
+- **n8n Workflow**: `http://127.0.0.1:5678`
+- **PostgreSQL PGVector**: `127.0.0.1:5432`
   - *Database*: `ai_chatbot`
   - *User*: `postgres`
   - *Password*: `postgres123`
